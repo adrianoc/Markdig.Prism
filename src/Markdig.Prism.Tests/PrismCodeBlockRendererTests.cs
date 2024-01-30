@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Linq;
 using HtmlAgilityPack;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NUnit.Framework;
 
 namespace Markdig.Prism.Tests
 {
-    [TestClass]
+    [TestFixture]
     public class PrismCodeBlockRendererTests
     {
         private static readonly String TestMarkdownWithLanguage = @"
@@ -33,7 +33,7 @@ Use **docker** command to build the imaage from this Dockerfile.
                 .UsePrism()
                 .Build();
 
-        [TestMethod]
+        [Test]
         public void RenderValidPrismCodeBlock()
         {
             var html = Markdown.ToHtml(TestMarkdownWithLanguage, pipeline);
@@ -41,15 +41,15 @@ Use **docker** command to build the imaage from this Dockerfile.
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
             var pre = doc.DocumentNode.SelectSingleNode("//pre");
-            Assert.IsNotNull(pre);
+            Assert.That(pre, Is.Not.Null);
             var code = pre.ChildNodes.First();
-            Assert.AreEqual("code", code.Name);
+            Assert.That(code.Name, Is.EqualTo("code"));
             var className = code.Attributes.First(a => a.Name == "class");
-            Assert.AreEqual("language-docker", className.Value);
-            Assert.IsTrue(code.InnerHtml.IndexOf("FROM nginx") > -1);
+            Assert.That(className.Value, Is.EqualTo("language-docker"));
+            Assert.That(code.InnerHtml.IndexOf("FROM nginx"), Is.GreaterThan(-1));
         }
 
-        [TestMethod]
+        [Test]
         public void UseDefaultCodeBlockRendererIfNoLanguageSpecified()
         {
             var html = Markdown.ToHtml(TestMarkdownWithoutLanguage, pipeline);
@@ -57,13 +57,13 @@ Use **docker** command to build the imaage from this Dockerfile.
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
             var pre = doc.DocumentNode.SelectSingleNode("//pre");
-            Assert.IsNull(pre);
+            Assert.That(pre, Is.Null);
             var code = doc.DocumentNode.SelectSingleNode("//code");
-            Assert.IsNotNull(code);
-            Assert.AreEqual("docker run .", code.InnerHtml);
+            Assert.That(code, Is.Not.Null);
+            Assert.That(code.InnerHtml, Is.EqualTo("docker run ."));
         }
 
-        [TestMethod]
+        [Test]
         public void UseDefaultCodeBlockRendererIfLanguageIsNotSupported()
         {
             var html = Markdown.ToHtml(TestMarkdownWithUnsupportedLanguage, pipeline);
@@ -71,10 +71,83 @@ Use **docker** command to build the imaage from this Dockerfile.
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
             var pre = doc.DocumentNode.SelectSingleNode("//pre");
-            Assert.IsNull(pre);
+            Assert.That(pre, Is.Null);
             var code = doc.DocumentNode.SelectSingleNode("//code");
-            Assert.IsNotNull(code);
-            Assert.AreEqual("mermaid graph TD; A --&gt; B", code.InnerHtml);
+            Assert.That(code, Is.Not.Null);
+            Assert.That(code.InnerHtml, Is.EqualTo("mermaid graph TD; A --&gt; B"));
+        }        
+        
+        [Test]
+        public void FencedCodeBlockWithValidArguments([Values("1-3", "1", "3", "1,3,5", "3-5,2")] string range)
+        {
+            var html = Markdown.ToHtml($$"""
+                                       ```CSharp #:{{range}}
+                                       class C
+                                       {
+                                          // Line 3
+                                          // Line 4
+                                       }
+                                       ```
+                                       """, pipeline);
+
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+            var pre = doc.DocumentNode.SelectSingleNode("//pre");
+            Assert.That(pre, Is.Not.Null);
+            Assert.That(pre.Attributes["data-line"].Value, Is.EqualTo(range));
+
+            var code = doc.DocumentNode.SelectSingleNode("//code");
+            Assert.That(code, Is.Not.Null);
+            Assert.That(code.Attributes["class"].Value, Is.EqualTo("language-CSharp line-numbers linkable-line-numbers"));
+        }
+        
+        [Test]
+        public void InvalidStartLineInMultiLineSelectionThrowArgumentOutOfRangeException([Values(-1, 0, 4)] int startLine)
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => Markdown.ToHtml($$"""
+                                                                               ```CSharp #:{{startLine}}-3
+                                                                               class C
+                                                                               {
+                                                                               }
+                                                                               ```
+                                                                               """, pipeline));
+
+        }
+        
+        [Test]
+        public void InvalidStartLineInSingleLineSelectionThrowArgumentOutOfRangeException([Values(-1, 0, 4)] int startLine)
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => Markdown.ToHtml($$"""
+                                                                               ```CSharp #:{{startLine}}
+                                                                               class C
+                                                                               {
+                                                                               }
+                                                                               ```
+                                                                               """, pipeline));
+        }
+
+        [Test]
+        public void ShowLineNumberWithNoHighlightedLine()
+        {
+            var html = Markdown.ToHtml($$"""
+                                         ```CSharp #:
+                                         class C
+                                         {
+                                            // Line 3
+                                            // Line 4
+                                         }
+                                         ```
+                                         """, pipeline);
+
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+            var pre = doc.DocumentNode.SelectSingleNode("//pre");
+            Assert.That(pre, Is.Not.Null);
+            Assert.That(pre.Attributes, Does.Not.Contain("data-line"));
+
+            var code = doc.DocumentNode.SelectSingleNode("//code");
+            Assert.That(code, Is.Not.Null);
+            Assert.That(code.Attributes["class"].Value, Is.EqualTo("language-CSharp line-numbers linkable-line-numbers"));
         }
     }
 }
